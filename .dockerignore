@@ -1,0 +1,6 @@
+# ignore node_modules pour alléger et éviter ce genre d'erreur
+node_modules
+# autres fichiers inutiles dans l’image
+.git
+*.log
+.env
