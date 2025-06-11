@@ -1,0 +1,114 @@
+name: 🚀 Build workflow
+run-name: ${{ github.actor }} is testing out GitHub Actions 🚀
+on: [push]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "🚀 Lancement des étapes de construction"
+      - name: Check out repository code
+        uses: actions/checkout@v4
+      - run: echo "🚀 Le code du dépôt a été cloné sur le serveur d'exécution."
+      - run: npm clean-install
+      - run: npm run build
+      - name: Save cache (node_modules)
+        uses: actions/cache@v4
+        with:
+          path: |
+            node_modules
+            /home/runner/.cache/Cypress
+          key: ${{ runner.os }}-node_modules-${{ hashFiles('**/package-lock.json') }}
+      - run : echo "🏁 Étapes de construction terminées"
+
+#  deploy:
+#    runs-on: ubuntu-latest
+#    needs:
+#      - test
+#    steps:
+#    - uses: appleboy/ssh-action@v1
+#      with:
+#        host: ${{ secrets.HOST }}
+#        username: ${{ secrets.USERNAME }}
+#        key: ${{ secrets.PASSWORD }}
+#        script: |
+#          export NVM_DIR="$HOME/.nvm"
+#          [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
+#          cd cda242-next
+#          git pull
+#          npm install
+#          npm run build
+#          pm2 restart npm
+
+  test:
+    runs-on: ubuntu-latest
+    needs:
+        - build
+    strategy:
+      matrix:
+        browser: [ chrome, edge ]
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "🚀 Lancement des étapes de test"
+      - name: Restore cache (node_modules)
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            node_modules
+            /home/runner/.cache/Cypress
+          key: ${{ runner.os }}-node_modules-${{ hashFiles('**/package-lock.json') }}
+      - run: echo "🚀 Le code du dépôt a été cloné sur le serveur d'exécution."
+      - uses: cypress-io/github-action@v6
+        with:
+          start: npm run dev
+          browser: ${{ matrix.browser }}
+      - name: Upload Cypress videos
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          path: cypress/videos/
+          name: ${{ matrix.browser }}-videos
+      - name: Upload Cypress screenshots
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          path: cypress/screenshot/
+          name: ${{ matrix.browser }}-name
+      - run: echo "🚀 Étapes de test terminées"
+      - run : echo "🚀 Étapes de test terminées"
+
+  build-push-docker:
+    runs-on: ubuntu-latest
+    permissions:
+        contents: read
+        packages: write
+    needs:
+      - build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/joosxphh/cda242-next/newt:latest
+
+  deploy-docker:
+    runs-on: ubuntu-latest
+#    needs:
+#      - build-push-docker
+    steps:
+      - uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.HOST }}
+          username: ${{ secrets.USERNAME }}
+          key: ${{ secrets.PASSWORD }}
+          script: |
+            cd prod
+            sudo docker compose -f docker-compose.prod.yml pull
+            sudo docker compose -f docker-compose.prod.yml up -d
